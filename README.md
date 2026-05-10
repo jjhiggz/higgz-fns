@@ -40,11 +40,14 @@ might feel like:
 - oRPC minus the transport layer, plus neverthrow-ish results.
 - tRPC/oRPC, but without the R: no remote layer, just the typed function
   boundary part.
+- TanStack Query's result-object ergonomics, but for your own application
+  functions instead of server-state fetching.
 - A middleware framework for regular functions.
 - A polite way to tell a function: "please validate your input, declare your
   dependencies, classify your failures, and stop surprising everyone."
 
-oRPC, neverthrow, and Effect were written by very smart engineers.
+oRPC, neverthrow, TanStack Query, and Effect were written by very smart
+engineers.
 `higgzfunctions` was written by a mid engineer with ChatGPT and a sincere desire
 to make application logic less slippery. That is not a formal methods pedigree,
 but it does mean the API tries very hard to be understandable by normal humans.
@@ -57,7 +60,7 @@ The examples are the best way to learn the library. They all solve the same
 | Folder | What It Shows | Coach Notes |
 | --- | --- | --- |
 | [`example/1-neat`](./example/1-neat) | One file, plain functions, input validation | "See? It is basically just a function with validation." |
-| [`example/2-structured`](./example/2-structured) | Adds output validation and typed return shape | "Comment out `.output(...)` if you want; the function still runs, you just lose output checking." |
+| [`example/2-structured`](./example/2-structured) | Adds output validation and plain-function middleware | "Middleware does not require result functions. Use wrappers early. Be free." |
 | [`example/3-optimized`](./example/3-optimized) | Adds service contracts and dependency injection | "Now tests can stub services without module mocking. Look at `find-dogs.test.ts`." |
 | [`example/4-fully-systematized`](./example/4-fully-systematized) | Adds result functions, typed errors, `attempt`, `fail`, `succeed` | "Expected failures become data instead of surprise throws." |
 | [`example/5-the-spreadsheet-has-become-sentient`](./example/5-the-spreadsheet-has-become-sentient) | Adds middleware, retry, and span-style observability | "The spreadsheet has become sentient, but at least it logs duration." |
@@ -91,7 +94,7 @@ It gives you these building blocks:
 | --- | --- |
 | `higgz.function()` | Builds a plain throwing function. Great when you want validation, middleware, deps, or output checks without result-style errors. |
 | `higgz.resultFunction()` | Builds a function whose expected failures return `Result` values instead of throwing. |
-| `.name(...)` | Gives the function a stable name for logs, middleware, traces, and general dignity. |
+| `.name(...)` | Gives the function a stable name for logs, middleware, and traces. Use it or don't; the function will live. |
 | `.input(schema)` | Validates and parses input before the handler runs. Works with Zod, Standard Schema-compatible validators, `parse`, `safeParse`, or validation functions. |
 | `.output(schema)` | Validates the handler output and gives callers a precise return type. |
 | `.deps(...)` | Declares service dependencies the handler receives as `deps`. |
@@ -123,20 +126,35 @@ await findDogs.run({ userId: "ada" });
 That is it. The input is validated, the handler receives the parsed input, and
 you did not have to join a monastery.
 
-## 2. Structured: Add Output Validation
+## 2. Structured: Add Output Validation And Middleware
 
 Output validation is optional, but useful when you want the function boundary to
-prove what it returns.
+prove what it returns. Middleware is also optional, and it works on plain
+`higgz.function()` calls. You do not need result functions, typed errors, or
+classified failures just to wrap execution.
 
 ```ts
 const FindDogsOutput = z.object({
   dogs: z.array(DogSchema)
 });
 
+const withTiming = () => {
+  return async ({ name }, next) => {
+    const startedAt = performance.now();
+    const output = await next();
+
+    console.log(`[${name}] finished in ${Math.round(performance.now() - startedAt)}ms`);
+
+    return output;
+  };
+};
+
 const findDogs = higgz
   .function()
+  .name("find-dogs")
   .input(FindDogsInput)
   .output(FindDogsOutput)
+  .use(withTiming())
   .fn(async ({ input }) => ({
     dogs: await fakeDBQueryForDogsByOwnerId(input.userId)
   }));
@@ -144,6 +162,9 @@ const findDogs = higgz
 
 You can comment out `.output(...)` and the function will still run. What you
 lose is runtime output validation and the nice precise public output type.
+
+You can also comment out `.use(withTiming())`. The function still runs; it just
+stops logging timing. Middleware is a knob, not a lifestyle contract.
 
 ## 3. Optimized: Services And Dependency Injection
 
@@ -259,7 +280,9 @@ The important parts:
 
 - `higgzError(...)` creates schema-backed tagged errors.
 - `.errors(...)` declares which errors the function can return.
-- `attempt(...)` maps thrown or rejected service calls into typed errors.
+- `attempt(...)` maps thrown or rejected service calls into typed errors. Its
+  `{ ok, data, error }` shape is very much inspired by TanStack Query's
+  "inspect the result object, then decide what to do" ergonomics.
 - `fail(...)` only accepts declared errors.
 - `succeed(...)` validates the happy path output.
 
@@ -275,11 +298,15 @@ if (result.ok) {
 }
 ```
 
-## 5. The Spreadsheet Has Become Sentient: Middleware
+## 5. The Spreadsheet Has Become Sentient: Middleware Plus Typed Results
 
-Middleware wraps regular function execution. Use it for boring useful things:
-timing, tracing, auth, retry, logging, transactions, request context, and other
-little systems that make production code less haunted.
+By this point, middleware is not new. The final example shows middleware working
+with result functions and classified errors, so wrappers can do more than log
+timing: they can inspect typed failures and make policy decisions like retrying.
+
+Use middleware for boring useful things: timing, tracing, auth, retry, logging,
+transactions, request context, and other little systems that make production code
+less haunted.
 
 ```ts
 function withSpan() {
@@ -320,6 +347,7 @@ typed failures, and middleware without becoming a whole runtime philosophy.
 | --- | --- | --- | --- |
 | oRPC | End-to-end typed APIs, contracts, transport concerns | Builder-style procedures, input/output schemas, middleware-ish composition | No router or transport layer. Bring your own HTTP/RPC/queue/CLI boundary. |
 | tRPC | Type-safe client/server API calls | Function boundaries with typed input/output and composable middleware | Not client/server magic. More like "make this app function disciplined." |
+| TanStack Query | Excellent async result ergonomics for server state | `attempt(...)` returns an inspectable `{ ok, data, error }` object, and result functions make callers branch on result state | Not a cache, query manager, or React/server-state tool. The inspiration is the result-handling feel. |
 | neverthrow | Explicit `Result` values | `resultFunction()`, `Ok`/`Err`, expected failures as data | Adds schemas, deps, middleware, and tagged error factories around the result idea. |
 | Effect | Typed effects, dependency layers, structured errors, concurrency, serious power | Services, typed errors, safe composition vibes | Much smaller. Far less powerful. Also much easier to explain before coffee. |
 | Express/Koa middleware | Wrap request handling with reusable behavior | `.use(...)` wraps function execution with reusable behavior | Not HTTP-specific. Middleware works on any function call. |

@@ -7,13 +7,14 @@ levels of HiggzFunctions buy-in:
   of the individual folders so the examples can focus on HiggzFunctions code.
 - `1-neat/`: one file, multiple functions, input validation, and a tiny local
   retry helper.
-- `2-structured/`: adds output validation and a precise return type.
+- `2-structured/`: adds output validation, a precise return type, and plain
+  function middleware.
 - `3-optimized/`: adds app-style folders, service contracts, and injected
   dependencies, but still uses the plain throwing API.
 - `4-fully-systematized/`: adds `resultFunction`, typed domain/integration
   errors, `attempt(...)`, `fail(...)`, and `succeed(...)`.
-- `5-the-spreadsheet-has-become-sentient/`: adds retryable classified errors
-  plus `withSpan` middleware around the full result-function flow.
+- `5-the-spreadsheet-has-become-sentient/`: combines retryable classified errors
+  with middleware around the full result-function flow.
 
 The intent is that each folder can be read as a small standalone demo project.
 Each folder also has its own README and code comments pointing out the new

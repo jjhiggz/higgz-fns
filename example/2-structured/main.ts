@@ -29,6 +29,23 @@ const FindDogsOutput = z.object({
   dogs: z.array(DogSchema)
 });
 
+const withTiming = () => {
+  return async (
+    { name }: { name: string },
+    next: () => Promise<z.infer<typeof FindDogsOutput>>
+  ) => {
+    const startedAt = performance.now();
+
+    // Middleware works on plain functions too. No Result types, no classified
+    // errors, no ceremonial robes. Just wrap the function and keep moving.
+    const output = await next();
+
+    console.log(`[${name}] finished in ${Math.round(performance.now() - startedAt)}ms`);
+
+    return output;
+  };
+};
+
 export const findDogsShaped = higgz
   .function()
   .name("find-dogs-shaped")
@@ -38,6 +55,9 @@ export const findDogsShaped = higgz
   // Commenting it out removes output validation; it does not infer the return
   // type from the handler body today. Useful, not mandatory. Like a helmet.
   .output(FindDogsOutput)
+  // New cool thing: middleware already works here. You do not need result
+  // functions or typed errors to start using wrappers for timing/logging/etc.
+  .use(withTiming())
   .fn(async ({ input }) => {
     const user = await fakeDBQueryForUserById(input.userId);
 
