@@ -105,6 +105,36 @@ It gives you these building blocks:
 | `.safe(...)` | Executes and returns a `Result` even for framework errors like bad input. |
 | `.unsafe(...)` | Unwraps successful result functions and throws failures. Useful at boundaries where throws are preferred. |
 
+## Sync Handlers Work, Full Sync Pipelines Do Not Yet
+
+Your handler can be sync or async. Higgz normalizes the call boundary to a
+`Promise` because schemas and middleware are allowed to be async, but the actual
+function body can absolutely just return a value.
+
+```ts
+const double = higgz
+  .function()
+  .input(z.number())
+  .output(z.number())
+  .fn(({ input }) => input * 2);
+
+const value = await double.run(21); // 42
+```
+
+What the type system does **not** support yet is a fully synchronous pipeline
+where `.run(...)` returns the value directly:
+
+```ts
+const value = double.run(21); // not today
+```
+
+That needs a separate contract: sync-only schemas, sync-only middleware,
+sync-only handlers, and sync-only service calls in the path. It is very doable,
+but it deserves its own API instead of pretending `Promise` and non-`Promise`
+execution are the same animal.
+
+Soon, my friend. Soon.
+
 ## 1. Neat: Just A Function With Validation
 
 The smallest useful version is `higgz.function()` plus `.input(...)`.
