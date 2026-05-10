@@ -343,16 +343,19 @@ This is not trying to replace the big serious tools. It is trying to cover a
 smaller, very common slice: application functions that want validation, deps,
 typed failures, and middleware without becoming a whole runtime philosophy.
 
-| Feature | `higgzfunctions` | oRPC | tRPC | TanStack Query | neverthrow | Effect |
-| --- | --- | --- | --- | --- | --- | --- |
-| Typed input/output boundary | Yes, for any function | Yes, for RPC procedures | Yes, for RPC procedures | Not the main job | No | Yes |
-| Remote/API transport | No, bring your own | Yes | Yes | Fetches server state | No | No |
-| Result-style expected failures | Yes, via `resultFunction()` | Not the core model | Not the core model | Result-ish query state | Yes | Yes |
-| Inspectable async result object | Yes, especially `attempt(...)` | Not the main job | Not the main job | Yes, a major inspiration | Yes | Yes |
-| Service/dependency injection | Yes, via `.deps(...)` and `higgzService(...)` | Not the focus | Not the focus | No | No | Yes, much more powerful |
-| Middleware around execution | Yes, for plain or result functions | Yes, around procedures | Yes, around procedures | Not like this | No | Yes |
-| Works without HTTP/RPC | Yes | No, RPC is the point | No, RPC is the point | Usually query/fetch oriented | Yes | Yes |
-| Runtime ambition level | Small function toolkit | API framework | API framework | Server-state manager | Result utility | Whole effect system |
+Legend: ✅ yes, ❌ no, 🟡 kind of / adjacent, 🎯 primary focus, 🧩 supported,
+🚫 intentionally absent.
+
+| Feature | `higgzfunctions` | (o/t)RPC | TanStack Query | neverthrow | Effect |
+| --- | --- | --- | --- | --- | --- |
+| Typed I/O | ✅ any fn | ✅ RPC | 🟡 | ❌ | ✅ |
+| Remote/API | 🚫 BYO | 🎯 | 🟡 fetch | ❌ | ❌ |
+| Result failures | ✅ | 🟡 | 🟡 state | 🎯 | ✅ |
+| Inspectable async result | ✅ `attempt` | 🟡 | 🎯 | ✅ | ✅ |
+| Deps/services | ✅ | 🟡 | ❌ | ❌ | 🎯 |
+| Middleware | ✅ | ✅ | 🟡 | ❌ | ✅ |
+| Works without HTTP | ✅ | ❌ | 🟡 | ✅ | ✅ |
+| Runtime size/vibe | 🧩 tiny | 🧰 API | 🗄️ cache | 📦 result | 🏛️ system |
 
 If you already love Effect, you probably do not need this. If you want 20% of
 that shape without learning a new civilization, hello, welcome in.
