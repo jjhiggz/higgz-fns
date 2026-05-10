@@ -1,8 +1,150 @@
 # higgzfunctions
 
-Transport-agnostic superfunctions for application logic. The API is shaped like a small function builder: validate inputs, run middleware, handle the function, optionally validate outputs, and choose between throwing or neverthrow-style `Result` returns.
+`higgzfunctions` is a tiny TypeScript toolkit for making regular application
+functions a little more civilized.
 
-## Services
+You can use almost none of it:
+
+```ts
+const findDogs = higgz
+  .function()
+  .input(z.object({ userId: z.string() }))
+  .fn(({ input }) => fakeDBQueryForDogsByOwnerId(input.userId));
+```
+
+Or you can turn on more system when the code deserves more system:
+
+```ts
+const findDogs = higgz
+  .resultFunction()
+  .name("find-dogs")
+  .deps({ users: UsersService, dogs: DogsService })
+  .input(FindDogsInput)
+  .output(FindDogsOutput)
+  .errors([UserNotFound, DogsServiceUnavailable])
+  .use(withSpan())
+  .use(retryTransient(2))
+  .fn(async ({ input, deps, attempt, fail, succeed }) => {
+    // still just your function body, now wearing a sensible jacket
+  });
+```
+
+That is the whole idea: buy into the parts you want.
+
+## Mental Models
+
+Depending on which corner of TypeScript internet raised you, `higgzfunctions`
+might feel like:
+
+- Effect, but for people who open the Effect docs and immediately need a walk.
+- oRPC minus the transport layer, plus neverthrow-ish results.
+- Fancy functional programming for tRPC/oRPC-brained people.
+- A middleware framework for regular functions.
+- A polite way to tell a function: "please validate your input, declare your
+  dependencies, classify your failures, and stop surprising everyone."
+
+oRPC, neverthrow, and Effect were written by very smart engineers.
+`higgzfunctions` was written by a mid engineer with ChatGPT and a sincere desire
+to make application logic less slippery. That is not a formal methods pedigree,
+but it does mean the API tries very hard to be understandable by normal humans.
+
+## Start With The Examples
+
+The examples are the best way to learn the library. They all solve the same
+"find a user's dogs" problem, adding one layer at a time:
+
+| Folder | What It Shows | Coach Notes |
+| --- | --- | --- |
+| [`example/1-neat`](./example/1-neat) | One file, plain functions, input validation | "See? It is basically just a function with validation." |
+| [`example/2-structured`](./example/2-structured) | Adds output validation and typed return shape | "Comment out `.output(...)` if you want; the function still runs, you just lose output checking." |
+| [`example/3-optimized`](./example/3-optimized) | Adds service contracts and dependency injection | "Now tests can stub services without module mocking. Look at `find-dogs.test.ts`." |
+| [`example/4-fully-systematized`](./example/4-fully-systematized) | Adds result functions, typed errors, `attempt`, `fail`, `succeed` | "Expected failures become data instead of surprise throws." |
+| [`example/5-the-spreadsheet-has-become-sentient`](./example/5-the-spreadsheet-has-become-sentient) | Adds middleware, retry, and span-style observability | "The spreadsheet has become sentient, but at least it logs duration." |
+
+The shared fake database lives in [`example/fake-db.ts`](./example/fake-db.ts)
+so the demos can focus on `higgzfunctions` concepts instead of pretend storage
+furniture.
+
+Run any demo with Bun:
+
+```sh
+bun example/1-neat/main.ts
+bun example/5-the-spreadsheet-has-become-sentient/main.ts
+```
+
+Run the tests, including the service-stubbing example:
+
+```sh
+npm test
+```
+
+## What It Can Do
+
+`higgzfunctions` is transport-agnostic. It does not care whether you call a
+function from an API route, a queue worker, a CLI command, a cron job, a test, or
+some weird place in your app that everyone agrees not to discuss.
+
+It gives you these building blocks:
+
+| Feature | What It Does |
+| --- | --- |
+| `higgz.function()` | Builds a plain throwing function. Great when you want validation, middleware, deps, or output checks without result-style errors. |
+| `higgz.resultFunction()` | Builds a function whose expected failures return `Result` values instead of throwing. |
+| `.name(...)` | Gives the function a stable name for logs, middleware, traces, and general dignity. |
+| `.input(schema)` | Validates and parses input before the handler runs. Works with Zod, Standard Schema-compatible validators, `parse`, `safeParse`, or validation functions. |
+| `.output(schema)` | Validates the handler output and gives callers a precise return type. |
+| `.deps(...)` | Declares service dependencies the handler receives as `deps`. |
+| `.errors(...)` | Declares the typed errors a result function can return. |
+| `.use(middleware)` | Wraps execution with reusable middleware for tracing, retry, auth, logging, timing, etc. |
+| `.fn(handler)` | Finishes the builder. The handler is still just TypeScript. Take a breath. |
+| `.run(...)` | Executes the function. Plain functions throw; result functions return `Ok`/`Err`. |
+| `.safe(...)` | Executes and returns a `Result` even for framework errors like bad input. |
+| `.unsafe(...)` | Unwraps successful result functions and throws failures. Useful at boundaries where throws are preferred. |
+
+## 1. Neat: Just A Function With Validation
+
+The smallest useful version is `higgz.function()` plus `.input(...)`.
+
+```ts
+const FindDogsInput = z.object({
+  userId: z.string().min(1)
+});
+
+const findDogs = higgz
+  .function()
+  .name("find-dogs")
+  .input(FindDogsInput)
+  .fn(({ input }) => fakeDBQueryForDogsByOwnerId(input.userId));
+
+await findDogs.run({ userId: "ada" });
+```
+
+That is it. The input is validated, the handler receives the parsed input, and
+you did not have to join a monastery.
+
+## 2. Structured: Add Output Validation
+
+Output validation is optional, but useful when you want the function boundary to
+prove what it returns.
+
+```ts
+const FindDogsOutput = z.object({
+  dogs: z.array(DogSchema)
+});
+
+const findDogs = higgz
+  .function()
+  .input(FindDogsInput)
+  .output(FindDogsOutput)
+  .fn(async ({ input }) => ({
+    dogs: await fakeDBQueryForDogsByOwnerId(input.userId)
+  }));
+```
+
+You can comment out `.output(...)` and the function will still run. What you
+lose is runtime output validation and the nice precise public output type.
+
+## 3. Optimized: Services And Dependency Injection
 
 Services are a clean way to organize dependency shapes for injection. They are
 nearly the same idea as regular parameters: "this function needs this thing to
@@ -59,79 +201,50 @@ Because dependencies are passed at the call boundary, stubbing a service in a
 test is just passing a different implementation:
 
 ```ts
-const realUsers: Higgz.inferService<typeof UsersService> = {
-  findById: async (id) => database.users.findById(id)
-};
+const stubUsers = UsersService.new({
+  async findById(id) {
+    return { id, name: "Stub Ada" };
+  }
+});
 
-const stubUsers: Higgz.inferService<typeof UsersService> = {
-  findById: async (id) => ({ id, name: "Stub Ada" })
-};
-
-const realResult = await findUser.run(
+await findUser.run(
   { id: "user_123" },
-  { deps: { users: UsersService.new(realUsers) } }
-);
-
-const testResult = await findUser.run(
-  { id: "user_123" },
-  { deps: { users: UsersService.new(stubUsers) } }
+  { deps: { users: stubUsers } }
 );
 ```
 
 No module mocking required. The function asks for a `users` service, and the
-caller decides which `users` service it gets.
+caller decides which `users` service it gets. Very adult. Very convenient.
 
-## Higgz API
+## 4. Fully Systematized: Typed Result Errors
 
-The newer Higgz-shaped API adds named functions, tagged errors, tagged services,
-typed `fail` / `succeed` helpers, and a TanStack-style `attempt` helper for
-working with promises without generator functions.
+When failures are expected, `resultFunction()` lets you return them as typed
+values instead of throwing.
 
 ```ts
-import {
-  higgz,
-  higgzError,
-  higgzService
-} from "higgzfunctions";
-import { z } from "zod";
-
-const FindUserInput = z.object({ id: z.string() });
-const UserOutput = z.object({
-  id: z.string(),
-  name: z.string()
-});
-
-type User = z.infer<typeof UserOutput>;
-
 const UserNotFound = higgzError(
   "UserNotFound",
   z.object({ id: z.string() })
 );
+
 const DatabaseError = higgzError(
   "DatabaseError",
   z.object({ operation: z.string() })
 );
 
-const UserService = higgzService<{
-  find(id: string): Promise<User | null>;
-}>("users");
-
 const findUser = higgz
   .resultFunction()
-  .name("findUser")
-  .deps({ users: UserService })
-  .input(FindUserInput)
-  .output(UserOutput)
+  .deps({ users: UsersService })
+  .input(z.object({ id: z.string() }))
+  .output(UserSchema)
   .errors([UserNotFound, DatabaseError])
   .fn(async ({ input, deps, attempt, fail, succeed }) => {
     const found = await attempt(
-      () => deps.users.find(input.id),
-      DatabaseError.with({ operation: "users.find" })
+      () => deps.users.findById(input.id),
+      DatabaseError.with({ operation: "users.findById" })
     );
 
-    if (!found.ok) {
-      return fail(found.error);
-    }
+    if (!found.ok) return fail(found.error);
 
     if (!found.data) {
       return fail(UserNotFound.new({ id: input.id }));
@@ -139,45 +252,124 @@ const findUser = higgz
 
     return succeed(found.data);
   });
+```
 
-const result = await findUser.run(
-  { id: "user_123" },
-  {
-    deps: {
-      users: UserService.new(users)
-    }
-  }
-);
+The important parts:
+
+- `higgzError(...)` creates schema-backed tagged errors.
+- `.errors(...)` declares which errors the function can return.
+- `attempt(...)` maps thrown or rejected service calls into typed errors.
+- `fail(...)` only accepts declared errors.
+- `succeed(...)` validates the happy path output.
+
+Callers get a `Result`:
+
+```ts
+const result = await findUser.run({ id: "user_123" }, { deps });
 
 if (result.ok) {
   console.log(result.value);
+} else if (UserNotFound.is(result.error)) {
+  console.log("that user has left the building");
 }
 ```
 
-The `Higgz` type namespace includes helper aliases for pulling shapes back out
-of factories:
+## 5. The Spreadsheet Has Become Sentient: Middleware
+
+Middleware wraps regular function execution. Use it for boring useful things:
+timing, tracing, auth, retry, logging, transactions, request context, and other
+little systems that make production code less haunted.
+
+```ts
+function withSpan() {
+  return async ({ name, input }, next) => {
+    const startedAt = performance.now();
+    console.log(`[span:start] ${name}`, { input });
+
+    const result = await next();
+
+    console.log(`[span:end] ${name}`, {
+      durationMs: Math.round(performance.now() - startedAt),
+      ok: result.ok
+    });
+
+    return result;
+  };
+}
+
+const findDogs = higgz
+  .resultFunction()
+  .name("find-dogs")
+  .use(withSpan())
+  .use(retryTransient(2))
+  .fn(async ({ succeed }) => succeed({ dogs: [] }));
+```
+
+Middleware is intentionally plain: it receives the context and a `next()`
+function. Call `next()`, inspect the result, return what should happen. No
+wizard robe required, though the final example does have spreadsheet energy.
+
+## Comparison Table
+
+This is not trying to replace the big serious tools. It is trying to cover a
+smaller, very common slice: application functions that want validation, deps,
+typed failures, and middleware without becoming a whole runtime philosophy.
+
+| Tool | What It Is Great At | Where `higgzfunctions` Is Similar | Where `higgzfunctions` Is Different |
+| --- | --- | --- | --- |
+| oRPC | End-to-end typed APIs, contracts, transport concerns | Builder-style procedures, input/output schemas, middleware-ish composition | No router or transport layer. Bring your own HTTP/RPC/queue/CLI boundary. |
+| tRPC | Type-safe client/server API calls | Function boundaries with typed input/output and composable middleware | Not client/server magic. More like "make this app function disciplined." |
+| neverthrow | Explicit `Result` values | `resultFunction()`, `Ok`/`Err`, expected failures as data | Adds schemas, deps, middleware, and tagged error factories around the result idea. |
+| Effect | Typed effects, dependency layers, structured errors, concurrency, serious power | Services, typed errors, safe composition vibes | Much smaller. Far less powerful. Also much easier to explain before coffee. |
+| Express/Koa middleware | Wrap request handling with reusable behavior | `.use(...)` wraps function execution with reusable behavior | Not HTTP-specific. Middleware works on any function call. |
+| Plain functions | Maximum simplicity | The handler remains regular TypeScript | Adds opt-in boundaries around validation, deps, errors, and middleware. |
+
+If you already love Effect, you probably do not need this. If you want 20% of
+that shape without learning a new civilization, hello, welcome in.
+
+## Type Helpers
+
+The `Higgz` namespace can infer shapes back out of factories:
 
 ```ts
 import type { Higgz } from "higgzfunctions";
 
-type UserServiceShape = Higgz.inferService<typeof UserService>;
+type UserServiceShape = Higgz.inferService<typeof UsersService>;
 type DatabaseErrorValue = Higgz.inferError<typeof DatabaseError>;
 type DatabaseErrorData = Higgz.inferErrorData<typeof DatabaseError>;
+type AppDeps = Higgz.inferDeps<{ users: typeof UsersService }>;
+type AppDepsInput = Higgz.inferDepsInput<{ users: typeof UsersService }>;
 ```
 
-`attempt` returns a discriminated result:
+This is mostly so you do not have to write the same types twice, which is one of
+the top five ways software slowly turns into paperwork.
+
+## API Cheat Sheet
 
 ```ts
-const result = await attempt(
-  () => somePromise(),
-  DatabaseError.with({ operation: "somePromise" })
-);
-
-// { ok: true, data: T, error: null }
-// { ok: false, data: null, error: DatabaseError }
+import {
+  higgz,
+  higgzError,
+  higgzService,
+  attempt,
+  type Higgz
+} from "higgzfunctions";
 ```
 
+- `higgz.function()` creates a plain throwing function builder.
+- `higgz.resultFunction()` creates a result-returning function builder.
+- `higgzService<Shape>("tag")` creates a tagged dependency contract.
+- `higgzError("Tag", schema)` creates a schema-backed tagged error factory.
+- `attempt(work, mapper)` catches throws/rejections and returns
+  `{ ok, data, error }`.
+- `Higgz.inferService`, `Higgz.inferError`, `Higgz.inferDeps`, and friends keep
+  your types connected to the contracts.
+
 ## Legacy Superfunction API
+
+The older `superfunction` API is still exported. It has the same general spirit:
+validate input, validate output, use middleware, and choose throwing or
+result-style calling.
 
 ```ts
 import { SuperFunctionError, err, superfunction } from "higgzfunctions";
@@ -194,44 +386,7 @@ const divide = superfunction
   });
 
 const result = await divide({ numerator: 10, denominator: 2 });
-
-if (result.ok) {
-  console.log(result.value);
-}
 ```
 
-## Core Superfunction API
-
-- `superfunction.handler(fn)` creates a callable async function.
-- `.input(schema)` parses input before the handler runs.
-- `.output(schema)` parses output after the handler runs.
-- `.use(middleware)` wraps execution with transport-free middleware.
-- `.safe(input)` always returns `Result<Output, Error>`.
-- `.result().handler(fn)` makes the callable itself return `Result`.
-- `.throws()` switches a builder back to throwing call style.
-
-Schemas can be Standard Schema-compatible objects, `parse`, `safeParse`, or a simple function.
-
-```ts
-const addOne = superfunction
-  .input((value: unknown) => {
-    if (typeof value !== "number") throw new Error("Expected number");
-    return value;
-  })
-  .handler(({ input }) => input + 1);
-
-await addOne(1); // 2
-await addOne.safe("1"); // Err(ValidationError BAD_INPUT)
-```
-
-## Typed Context
-
-```ts
-import { createSuperFunction } from "higgzfunctions";
-
-const authed = createSuperFunction<{ userId: string }>();
-
-const whoami = authed.handler(({ context }) => context.userId);
-
-await whoami(undefined, { context: { userId: "user_123" } });
-```
+New code should usually start with `higgz.function()` or
+`higgz.resultFunction()`.
