@@ -343,15 +343,16 @@ This is not trying to replace the big serious tools. It is trying to cover a
 smaller, very common slice: application functions that want validation, deps,
 typed failures, and middleware without becoming a whole runtime philosophy.
 
-| Tool | What It Is Great At | Where `higgzfunctions` Is Similar | Where `higgzfunctions` Is Different |
-| --- | --- | --- | --- |
-| oRPC | End-to-end typed APIs, contracts, transport concerns | Builder-style procedures, input/output schemas, middleware-ish composition | No router or transport layer. Bring your own HTTP/RPC/queue/CLI boundary. |
-| tRPC | Type-safe client/server API calls | Function boundaries with typed input/output and composable middleware | Not client/server magic. More like "make this app function disciplined." |
-| TanStack Query | Excellent async result ergonomics for server state | `attempt(...)` returns an inspectable `{ ok, data, error }` object, and result functions make callers branch on result state | Not a cache, query manager, or React/server-state tool. The inspiration is the result-handling feel. |
-| neverthrow | Explicit `Result` values | `resultFunction()`, `Ok`/`Err`, expected failures as data | Adds schemas, deps, middleware, and tagged error factories around the result idea. |
-| Effect | Typed effects, dependency layers, structured errors, concurrency, serious power | Services, typed errors, safe composition vibes | Much smaller. Far less powerful. Also much easier to explain before coffee. |
-| Express/Koa middleware | Wrap request handling with reusable behavior | `.use(...)` wraps function execution with reusable behavior | Not HTTP-specific. Middleware works on any function call. |
-| Plain functions | Maximum simplicity | The handler remains regular TypeScript | Adds opt-in boundaries around validation, deps, errors, and middleware. |
+| Feature | `higgzfunctions` | oRPC | tRPC | TanStack Query | neverthrow | Effect |
+| --- | --- | --- | --- | --- | --- | --- |
+| Typed input/output boundary | Yes, for any function | Yes, for RPC procedures | Yes, for RPC procedures | Not the main job | No | Yes |
+| Remote/API transport | No, bring your own | Yes | Yes | Fetches server state | No | No |
+| Result-style expected failures | Yes, via `resultFunction()` | Not the core model | Not the core model | Result-ish query state | Yes | Yes |
+| Inspectable async result object | Yes, especially `attempt(...)` | Not the main job | Not the main job | Yes, a major inspiration | Yes | Yes |
+| Service/dependency injection | Yes, via `.deps(...)` and `higgzService(...)` | Not the focus | Not the focus | No | No | Yes, much more powerful |
+| Middleware around execution | Yes, for plain or result functions | Yes, around procedures | Yes, around procedures | Not like this | No | Yes |
+| Works without HTTP/RPC | Yes | No, RPC is the point | No, RPC is the point | Usually query/fetch oriented | Yes | Yes |
+| Runtime ambition level | Small function toolkit | API framework | API framework | Server-state manager | Result utility | Whole effect system |
 
 If you already love Effect, you probably do not need this. If you want 20% of
 that shape without learning a new civilization, hello, welcome in.
@@ -393,29 +394,3 @@ import {
   `{ ok, data, error }`.
 - `Higgz.inferService`, `Higgz.inferError`, `Higgz.inferDeps`, and friends keep
   your types connected to the contracts.
-
-## Legacy Superfunction API
-
-The older `superfunction` API is still exported. It has the same general spirit:
-validate input, validate output, use middleware, and choose throwing or
-result-style calling.
-
-```ts
-import { SuperFunctionError, err, superfunction } from "higgzfunctions";
-
-const divide = superfunction
-  .result()
-  .input((value: { numerator: number; denominator: number }) => value)
-  .handler(({ input }) => {
-    if (input.denominator === 0) {
-      return err(new SuperFunctionError("DIVIDE_BY_ZERO"));
-    }
-
-    return input.numerator / input.denominator;
-  });
-
-const result = await divide({ numerator: 10, denominator: 2 });
-```
-
-New code should usually start with `higgz.function()` or
-`higgz.resultFunction()`.

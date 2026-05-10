@@ -1,7 +1,7 @@
 {
   "name": "higgzfunctions",
   "version": "0.1.0",
-  "description": "Transport-agnostic superfunctions with typed inputs, outputs, middleware, and opt-in Result returns.",
+  "description": "Transport-agnostic Higgz functions with typed inputs, outputs, middleware, deps, and opt-in Result returns.",
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
