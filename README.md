@@ -38,7 +38,8 @@ might feel like:
 
 - Effect, but for people who open the Effect docs and immediately need a walk.
 - oRPC minus the transport layer, plus neverthrow-ish results.
-- Fancy functional programming for tRPC/oRPC-brained people.
+- tRPC/oRPC, but without the R: no remote layer, just the typed function
+  boundary part.
 - A middleware framework for regular functions.
 - A polite way to tell a function: "please validate your input, declare your
   dependencies, classify your failures, and stop surprising everyone."
